@@ -24,6 +24,7 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
 
         try
         {
+            _ = AllowSetForegroundWindow(ASFW_ANY);
             var weztermPath = FindWeztermPath();
             var args = new List<string> { "start", "--always-new-process" };
 
@@ -48,17 +49,19 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
                 }
             }
 
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < args.Count; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(EscapeArgument(args[i]));
+            }
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = weztermPath,
-                UseShellExecute = false,
-                CreateNoWindow = true
+                Arguments = sb.ToString(),
+                UseShellExecute = true
             };
-
-            foreach (var arg in args)
-            {
-                startInfo.ArgumentList.Add(arg);
-            }
 
             var thread = new System.Threading.Thread(() =>
             {
@@ -70,6 +73,25 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
                     if (process != null)
                     {
                         _ = AllowSetForegroundWindow(process.Id);
+
+                        // Wait up to 2 seconds for the main window handle to be created in background
+                        int attempts = 0;
+                        while (process.MainWindowHandle == IntPtr.Zero && !process.HasExited && attempts < 40)
+                        {
+                            System.Threading.Thread.Sleep(50);
+                            process.Refresh();
+                            attempts++;
+                        }
+
+                        if (process.MainWindowHandle != IntPtr.Zero)
+                        {
+                            ForceForeground(process.MainWindowHandle);
+                        }
+                        else
+                        {
+                            // Fallback if no window handle was resolved (e.g. if it's a launcher shim)
+                            _ = AllowSetForegroundWindow(ASFW_ANY);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -78,8 +100,11 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
                 }
             });
             thread.SetApartmentState(System.Threading.ApartmentState.STA);
-            thread.IsBackground = true;
             thread.Start();
+
+            // Wait very briefly for the STA thread to initialize startup, then return.
+            // This dismisses the Command Palette immediately for a fluid UI.
+            _ = thread.Join(50);
         }
         catch (Exception ex)
         {
@@ -100,8 +125,8 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "WezTerm"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WezTerm"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "WezTerm"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "wezterm", "current"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims"),
         };
 
         foreach (var exeName in exeNames)
@@ -121,9 +146,112 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
         return _resolvedWeztermPath;
     }
 
+    private static string EscapeArgument(string arg)
+    {
+        if (string.IsNullOrEmpty(arg))
+        {
+            return "\"\"";
+        }
+
+        if (arg.AsSpan().IndexOfAny(' ', '\t', '"') < 0)
+        {
+            return arg;
+        }
+
+        var sb = new System.Text.StringBuilder(arg.Length + 5);
+        sb.Append('"');
+        for (int i = 0; i < arg.Length; i++)
+        {
+            int backslashCount = 0;
+            while (i < arg.Length && arg[i] == '\\')
+            {
+                backslashCount++;
+                i++;
+            }
+
+            if (i < arg.Length)
+            {
+                if (arg[i] == '"')
+                {
+                    sb.Append('\\', backslashCount * 2 + 1);
+                    sb.Append('"');
+                }
+                else
+                {
+                    sb.Append('\\', backslashCount);
+                    sb.Append(arg[i]);
+                }
+            }
+            else
+            {
+                sb.Append('\\', backslashCount * 2);
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
+    }
+
     [System.Runtime.InteropServices.LibraryImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static partial bool AllowSetForegroundWindow(int dwProcessId);
 
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    private static partial IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool AttachThreadInput(uint idAttach, uint idAttachTo, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool fAttach);
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool BringWindowToTop(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
     private const int ASFW_ANY = -1;
+    private const int SW_SHOW = 5;
+
+    private static void ForceForeground(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero) return;
+
+        IntPtr foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == hWnd) return;
+
+        uint foregroundThread = GetWindowThreadProcessId(foregroundWindow, IntPtr.Zero);
+        uint appThread = GetWindowThreadProcessId(hWnd, IntPtr.Zero);
+
+        if (foregroundThread != 0 && appThread != 0 && foregroundThread != appThread)
+        {
+            try
+            {
+                _ = AttachThreadInput(foregroundThread, appThread, true);
+                _ = ShowWindow(hWnd, SW_SHOW);
+                _ = BringWindowToTop(hWnd);
+                _ = SetForegroundWindow(hWnd);
+                _ = AttachThreadInput(foregroundThread, appThread, false);
+            }
+            catch
+            {
+                _ = ShowWindow(hWnd, SW_SHOW);
+                _ = BringWindowToTop(hWnd);
+                _ = SetForegroundWindow(hWnd);
+            }
+        }
+        else
+        {
+            _ = ShowWindow(hWnd, SW_SHOW);
+            _ = BringWindowToTop(hWnd);
+            _ = SetForegroundWindow(hWnd);
+        }
+    }
 }
