@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "WeztermExtensionForCommandPalette (Package)": {
+      "commandName": "MsixPackage",
+      "doNotLaunchApp": true
+    },
+    "WeztermExtensionForCommandPalette (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
