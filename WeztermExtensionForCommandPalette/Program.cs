@@ -8,7 +8,6 @@ using Shmuelie.WinRTServer;
 using Shmuelie.WinRTServer.CsWinRT;
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace WeztermExtensionForCommandPalette;
 
@@ -29,31 +28,29 @@ public class Program
         {
             global::Shmuelie.WinRTServer.ComServer server = new();
 
-            using (ManualResetEvent extensionDisposedEvent = new(false))
-            {
-                var services = new ServiceCollection();
-                
-                services.AddSingleton<IWeztermProfileFactory, WeztermProfileFactory>();
-                services.AddSingleton<IWeztermConfigProvider, WeztermConfigProvider>();
-                services.AddSingleton<IWeztermExecutionProvider, WeztermExecutionProvider>();
-                
-                services.AddSingleton<WeztermExtensionForCommandPalettePage>();
-                services.AddSingleton<WeztermExtensionForCommandPaletteCommandsProvider>();
-                
-                services.AddSingleton(extensionDisposedEvent);
-                services.AddSingleton<WeztermExtensionForCommandPalette>();
+            using ManualResetEvent extensionDisposedEvent = new(false);
+            var services = new ServiceCollection();
 
-                using var serviceProvider = services.BuildServiceProvider();
+            services.AddSingleton<IWeztermProfileFactory, WeztermProfileFactory>();
+            services.AddSingleton<IWeztermConfigProvider, WeztermConfigProvider>();
+            services.AddSingleton<IWeztermExecutionProvider, WeztermExecutionProvider>();
 
-                var extensionInstance = serviceProvider.GetRequiredService<WeztermExtensionForCommandPalette>();
-                server.RegisterClass<WeztermExtensionForCommandPalette, IExtension>(() => extensionInstance);
-                server.Start();
-                
-                // Wait for the extension to be disposed before stopping the server.
-                extensionDisposedEvent.WaitOne();
-                server.Stop();
-                server.UnsafeDispose();
-            }
+            services.AddSingleton<WeztermExtensionForCommandPalettePage>();
+            services.AddSingleton<WeztermExtensionForCommandPaletteCommandsProvider>();
+
+            services.AddSingleton(extensionDisposedEvent);
+            services.AddSingleton<WeztermExtensionForCommandPalette>();
+
+            using var serviceProvider = services.BuildServiceProvider();
+
+            var extensionInstance = serviceProvider.GetRequiredService<WeztermExtensionForCommandPalette>();
+            server.RegisterClass<WeztermExtensionForCommandPalette, IExtension>(() => extensionInstance);
+            server.Start();
+
+            // Wait for the extension to be disposed before stopping the server.
+            extensionDisposedEvent.WaitOne();
+            server.Stop();
+            server.UnsafeDispose();
         }
         else
         {

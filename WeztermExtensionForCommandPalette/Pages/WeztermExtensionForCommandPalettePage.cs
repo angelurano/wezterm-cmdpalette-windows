@@ -18,10 +18,13 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
 {
     private readonly IWeztermConfigProvider _configProvider;
     private readonly IWeztermExecutionProvider _executionProvider;
+    private List<WeztermProfile>? _lastProfiles;
+    private IListItem[] _cachedItems = [];
+    private bool _isLoading;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="WeztermExtensionForCommandPalettePage"/> class.
-    /// Sets default page properties and dependencies.
+    /// Sets default page properties, dependencies, and triggers the initial background profile load.
     /// </summary>
     /// <param name="configProvider">The provider to get configuration.</param>
     /// <param name="executionProvider">The provider to launch profiles.</param>
@@ -36,57 +39,94 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
         Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png");
         Title = "Wezterm Profiles";
         Name = "Wezterm";
+
+        // Pre-fetch profiles in background on page initialization.
+        _ = RefreshProfilesIfNeededAsync();
     }
 
     /// <summary>
     /// Populates the list items representing the configured WezTerm profiles.
+    /// Returns cached items immediately and triggers an asynchronous refresh in the background.
     /// </summary>
     /// <returns>An array of list items representing WezTerm profiles.</returns>
     public override IListItem[] GetItems()
     {
-        var profiles = Task.Run(() => _configProvider.GetProfilesAsync()).GetAwaiter().GetResult();
-        var items = new IListItem[profiles.Count];
+        _ = RefreshProfilesIfNeededAsync();
+        return _cachedItems;
+    }
 
-        for (int i = 0; i < profiles.Count; i++)
+    /// <summary>
+    /// Checks if configuration has changed and asynchronously updates list items in the background.
+    /// Triggers <see cref="ListPage.RaiseItemsChanged"/> if changes are found.
+    /// </summary>
+    /// <returns>A task representing the asynchronous refresh operation.</returns>
+    private async Task RefreshProfilesIfNeededAsync()
+    {
+        if (_isLoading)
         {
-            var profile = profiles[i];
-            var command = new AnonymousCommand(() =>
-            {
-                _executionProvider.LaunchProfile(profile);
-            });
-
-            command.Result = CommandResult.Dismiss();
-
-            string subtitle;
-            if (!string.IsNullOrEmpty(profile.Domain))
-            {
-                var cmdStr = (profile.Args != null && profile.Args.Count > 0) ? $" | Command: {string.Join(" ", profile.Args)}" : string.Empty;
-                var cwdStr = !string.IsNullOrEmpty(profile.Cwd) ? $" | Directory: {profile.Cwd}" : string.Empty;
-                subtitle = $"Domain: {profile.Domain}{cmdStr}{cwdStr}";
-            }
-            else if (profile.Args != null && profile.Args.Count > 0)
-            {
-                var cwdStr = !string.IsNullOrEmpty(profile.Cwd) ? $" | Directory: {profile.Cwd}" : string.Empty;
-                subtitle = $"Command: {string.Join(" ", profile.Args)}{cwdStr}";
-            }
-            else if (!string.IsNullOrEmpty(profile.Cwd))
-            {
-                subtitle = $"Directory: {profile.Cwd}";
-            }
-            else
-            {
-                subtitle = "Launch default WezTerm session";
-            }
-
-            items[i] = new ListItem(command)
-            {
-                Title = profile.Label,
-                Subtitle = subtitle,
-                Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png")
-            };
+            return;
         }
 
-        return items;
+        _isLoading = true;
+        try
+        {
+            var profiles = await _configProvider.GetProfilesAsync().ConfigureAwait(false);
+            if (_lastProfiles != profiles)
+            {
+                _lastProfiles = profiles;
+                var items = new IListItem[profiles.Count];
+
+                for (int i = 0; i < profiles.Count; i++)
+                {
+                    var profile = profiles[i];
+                    var command = new AnonymousCommand(() =>
+                    {
+                        _executionProvider.LaunchProfile(profile);
+                    });
+
+                    command.Result = CommandResult.Dismiss();
+
+                    string subtitle;
+                    if (!string.IsNullOrEmpty(profile.Domain))
+                    {
+                        var cmdStr = (profile.Args != null && profile.Args.Count > 0) ? $" | Command: {string.Join(" ", profile.Args)}" : string.Empty;
+                        var cwdStr = !string.IsNullOrEmpty(profile.Cwd) ? $" | Directory: {profile.Cwd}" : string.Empty;
+                        subtitle = $"Domain: {profile.Domain}{cmdStr}{cwdStr}";
+                    }
+                    else if (profile.Args != null && profile.Args.Count > 0)
+                    {
+                        var cwdStr = !string.IsNullOrEmpty(profile.Cwd) ? $" | Directory: {profile.Cwd}" : string.Empty;
+                        subtitle = $"Command: {string.Join(" ", profile.Args)}{cwdStr}";
+                    }
+                    else if (!string.IsNullOrEmpty(profile.Cwd))
+                    {
+                        subtitle = $"Directory: {profile.Cwd}";
+                    }
+                    else
+                    {
+                        subtitle = "Launch default WezTerm session";
+                    }
+
+                    items[i] = new ListItem(command)
+                    {
+                        Title = profile.Label,
+                        Subtitle = subtitle,
+                        Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png")
+                    };
+                }
+
+                _cachedItems = items;
+                RaiseItemsChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading profiles asynchronously: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 }
 

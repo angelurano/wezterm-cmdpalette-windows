@@ -15,23 +15,13 @@ namespace WeztermExtensionForCommandPalette;
 /// Default implementation of the <see cref="IWeztermConfigProvider"/> interface.
 /// Provides configuration scanning, comment stripping, parsing, and caching.
 /// </summary>
-public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
+public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory) : IWeztermConfigProvider, IDisposable
 {
-    private readonly IWeztermProfileFactory _profileFactory;
+    private readonly IWeztermProfileFactory _profileFactory = profileFactory ?? throw new ArgumentNullException(nameof(profileFactory));
     private readonly SemaphoreSlim _lock = new(1, 1);
     private string? _resolvedConfigPath;
     private DateTime _lastConfigWriteTime = DateTime.MinValue;
     private List<WeztermProfile>? _cachedProfiles;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="WeztermConfigProvider"/> class.
-    /// </summary>
-    /// <param name="profileFactory">The factory to create profiles.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="profileFactory"/> is null.</exception>
-    public WeztermConfigProvider(IWeztermProfileFactory profileFactory)
-    {
-        _profileFactory = profileFactory ?? throw new ArgumentNullException(nameof(profileFactory));
-    }
 
     /// <inheritdoc/>
     public async Task<List<WeztermProfile>> GetProfilesAsync()
@@ -153,23 +143,23 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
                         var labelMatch = LabelRegex().Match(itemBlock);
                         if (!labelMatch.Success) continue;
 
-                        string label = UnescapeLuaString(labelMatch.Groups[1].Value);
+                        string label = UnescapeLuaString(labelMatch.Groups[2].Value);
 
                         var cwdMatch = CwdRegex().Match(itemBlock);
-                        string? cwd = cwdMatch.Success ? UnescapeLuaString(cwdMatch.Groups[1].Value) : null;
+                        string? cwd = cwdMatch.Success ? UnescapeLuaString(cwdMatch.Groups[2].Value) : null;
 
                         string? domain = null;
                         var domainTableMatch = DomainTableRegex().Match(itemBlock);
                         if (domainTableMatch.Success)
                         {
-                            domain = UnescapeLuaString(domainTableMatch.Groups[1].Value);
+                            domain = UnescapeLuaString(domainTableMatch.Groups[2].Value);
                         }
                         else
                         {
                             var domainStringMatch = DomainStringRegex().Match(itemBlock);
                             if (domainStringMatch.Success)
                             {
-                                domain = UnescapeLuaString(domainStringMatch.Groups[1].Value);
+                                domain = UnescapeLuaString(domainStringMatch.Groups[2].Value);
                             }
                         }
 
@@ -181,7 +171,7 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
                             var stringMatches = ArgsStringRegex().Matches(argsContent);
                             foreach (Match m in stringMatches)
                             {
-                                argsList.Add(UnescapeLuaString(m.Groups[1].Value));
+                                argsList.Add(UnescapeLuaString(m.Groups[2].Value));
                             }
                         }
 
@@ -243,7 +233,7 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
                 }
                 if (doubleQuotes % 2 == 0 && singleQuotes % 2 == 0)
                 {
-                    lineToAppend = line.Slice(0, commentIndex);
+                    lineToAppend = line[..commentIndex];
                 }
             }
             sb.Append(lineToAppend);
@@ -255,10 +245,10 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
     private static ReadOnlySpan<char> ExtractLaunchMenuBlock(ReadOnlySpan<char> content)
     {
         int index = content.IndexOf("launch_menu".AsSpan(), StringComparison.Ordinal);
-        if (index < 0) return ReadOnlySpan<char>.Empty;
+        if (index < 0) return [];
 
-        int openBraceIndex = content.Slice(index).IndexOf('{');
-        if (openBraceIndex < 0) return ReadOnlySpan<char>.Empty;
+        int openBraceIndex = content[index..].IndexOf('{');
+        if (openBraceIndex < 0) return [];
 
         openBraceIndex += index;
 
@@ -274,10 +264,10 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
 
         if (braceCount == 0)
         {
-            return content.Slice(openBraceIndex, currentIndex - openBraceIndex);
+            return content[openBraceIndex..currentIndex];
         }
 
-        return ReadOnlySpan<char>.Empty;
+        return [];
     }
 
     private static List<string> ExtractItems(ReadOnlySpan<char> block)
@@ -285,12 +275,12 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
         var items = new List<string>();
         if (block.IsEmpty || block.Length < 2) return items;
 
-        ReadOnlySpan<char> inner = block.Slice(1, block.Length - 2);
+        ReadOnlySpan<char> inner = block[1..^1];
 
         int currentIndex = 0;
         while (currentIndex < inner.Length)
         {
-            int openBraceIndex = inner.Slice(currentIndex).IndexOf('{');
+            int openBraceIndex = inner[currentIndex..].IndexOf('{');
             if (openBraceIndex < 0) break;
 
             openBraceIndex += currentIndex;
@@ -307,7 +297,7 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
 
             if (braceCount == 0)
             {
-                items.Add(inner.Slice(openBraceIndex, nextIndex - openBraceIndex).ToString());
+                items.Add(inner[openBraceIndex..nextIndex].ToString());
                 currentIndex = nextIndex;
             }
             else
@@ -331,22 +321,22 @@ public partial class WeztermConfigProvider : IWeztermConfigProvider, IDisposable
             .Replace("\\n", "\n");
     }
 
-    [GeneratedRegex(@"label\s*=\s*[""']([^""']*)[""']", RegexOptions.Compiled)]
+    [GeneratedRegex(@"label\s*=\s*([""'])((?:\\.|(?!\1).)*)\1", RegexOptions.Compiled)]
     private static partial Regex LabelRegex();
 
-    [GeneratedRegex(@"cwd\s*=\s*[""']([^""']*)[""']", RegexOptions.Compiled)]
+    [GeneratedRegex(@"cwd\s*=\s*([""'])((?:\\.|(?!\1).)*)\1", RegexOptions.Compiled)]
     private static partial Regex CwdRegex();
 
-    [GeneratedRegex(@"domain\s*=\s*\{\s*DomainName\s*=\s*[""']([^""']*)[""']\s*\}", RegexOptions.Compiled)]
+    [GeneratedRegex(@"domain\s*=\s*\{\s*DomainName\s*=\s*([""'])((?:\\.|(?!\1).)*)\1\s*\}", RegexOptions.Compiled)]
     private static partial Regex DomainTableRegex();
 
-    [GeneratedRegex(@"domain\s*=\s*[""']([^""']*)[""']", RegexOptions.Compiled)]
+    [GeneratedRegex(@"domain\s*=\s*([""'])((?:\\.|(?!\1).)*)\1", RegexOptions.Compiled)]
     private static partial Regex DomainStringRegex();
 
     [GeneratedRegex(@"args\s*=\s*\{([^}]*)\}", RegexOptions.Compiled)]
     private static partial Regex ArgsRegex();
 
-    [GeneratedRegex(@"[""']([^""']*)[""']", RegexOptions.Compiled)]
+    [GeneratedRegex(@"([""'])((?:\\.|(?!\1).)*)\1", RegexOptions.Compiled)]
     private static partial Regex ArgsStringRegex();
 
     /// <summary>
