@@ -16,6 +16,7 @@ This file provides context, rules, and guidelines to help AI coding agents work 
 
 ### 1. Process Spawning
 - **Security & Safety**: Always spawn external processes safely. Disable shell execution (`UseShellExecute = false`), set `CreateNoWindow = true` where applicable, and populate `ProcessStartInfo.ArgumentList` directly rather than constructing an arguments string manually. This avoids argument injection vulnerabilities and removes the need for custom escaping logic.
+- **Window Focus Integration**: Do not use `UseShellExecute = true` to solve window focus or activation issues. Foreground window focus is explicitly delegated using the native Win32 `AllowSetForegroundWindow` API and `ForceForeground` logic on an STA thread (see guideline #4).
 
 ### 2. Architecture & Dependency Injection
 - **DI Container**: The project uses standard Dependency Injection (`Microsoft.Extensions.DependencyInjection`) inside `Program.cs`. Do not introduce static helper patterns for key logic.

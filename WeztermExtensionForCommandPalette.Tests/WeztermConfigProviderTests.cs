@@ -23,6 +23,7 @@ public class WeztermConfigProviderTests
         Environment.SetEnvironmentVariable("WEZTERM_CONFIG_FILE", null);
         Environment.SetEnvironmentVariable("WEZTERM_CONFIG_DIR", null);
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", null);
+        Environment.SetEnvironmentVariable("HOME", null);
     }
 
     [TestCleanup]
@@ -38,6 +39,7 @@ public class WeztermConfigProviderTests
             catch { }
         }
         Environment.SetEnvironmentVariable("WEZTERM_CONFIG_FILE", null);
+        Environment.SetEnvironmentVariable("HOME", null);
     }
 
     [TestMethod]
@@ -145,5 +147,84 @@ config.launch_menu = {
         profiles[0].Label.Should().Be("WSL Ubuntu");
         profiles[0].Domain.Should().Be("wsl");
         _mockFactory.VerifyAll();
+    }
+
+    [TestMethod]
+    public async Task GetProfilesAsync_WithMissingLabel_ShouldDeriveLabelFromArgs()
+    {
+        // Arrange
+        var luaContent = @"
+config.launch_menu = {
+  {
+    args = { 'wsl.exe', '-d', 'Debian' },
+    domain = 'wsl'
+  },
+  {
+    domain = 'local'
+  }
+}
+";
+        _tempFilePath = Path.GetTempFileName();
+        await File.WriteAllTextAsync(_tempFilePath, luaContent);
+        Environment.SetEnvironmentVariable("WEZTERM_CONFIG_FILE", _tempFilePath);
+
+        var profile1 = new WeztermProfile { Label = "wsl.exe -d Debian", Domain = "wsl", Args = ["wsl.exe", "-d", "Debian"] };
+        var profile2 = new WeztermProfile { Label = "WezTerm (Unnamed)", Domain = "local", Args = [] };
+
+        _mockFactory.Setup(f => f.CreateProfile("wsl.exe -d Debian", null, "wsl", It.Is<System.Collections.Generic.List<string>>(l => l.Count == 3)))
+            .Returns(profile1);
+        _mockFactory.Setup(f => f.CreateProfile("WezTerm (Unnamed)", null, "local", It.Is<System.Collections.Generic.List<string>>(l => l.Count == 0)))
+            .Returns(profile2);
+
+        // Act
+        var profiles = await _provider.GetProfilesAsync();
+
+        // Assert
+        profiles.Should().HaveCount(2);
+        profiles[0].Label.Should().Be("wsl.exe -d Debian");
+        profiles[1].Label.Should().Be("WezTerm (Unnamed)");
+        _mockFactory.VerifyAll();
+    }
+
+    [TestMethod]
+    public async Task GetProfilesAsync_WithHomeEnvironmentVariable_ShouldLoadConfigFromHome()
+    {
+        // Arrange
+        var tempHome = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempHome);
+        try
+        {
+            var configPath = Path.Combine(tempHome, ".wezterm.lua");
+            var luaContent = @"
+config.launch_menu = {
+  {
+    label = 'Home Config Profile',
+    domain = 'local'
+  }
+}
+";
+            await File.WriteAllTextAsync(configPath, luaContent);
+            Environment.SetEnvironmentVariable("HOME", tempHome);
+
+            var profile = new WeztermProfile { Label = "Home Config Profile", Domain = "local", Args = [] };
+            _mockFactory.Setup(f => f.CreateProfile("Home Config Profile", null, "local", It.IsAny<System.Collections.Generic.List<string>>()))
+                .Returns(profile);
+
+            // Act
+            var profiles = await _provider.GetProfilesAsync();
+
+            // Assert
+            profiles.Should().HaveCount(1);
+            profiles[0].Label.Should().Be("Home Config Profile");
+            _mockFactory.VerifyAll();
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempHome, true);
+            }
+            catch { }
+        }
     }
 }

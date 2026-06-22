@@ -81,6 +81,32 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
 
             if (configContent == null)
             {
+                // Thumb Drive Mode: check if wezterm.lua exists next to the wezterm installation folder
+                var folders = new[]
+                {
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "WezTerm"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WezTerm"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "WezTerm"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "wezterm", "current"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims"),
+                };
+                foreach (var folder in folders)
+                {
+                    var path = Path.Combine(folder, "wezterm.lua");
+                    if (File.Exists(path))
+                    {
+                        configContent = await TryReadFileAsync(path).ConfigureAwait(false);
+                        if (configContent != null)
+                        {
+                            foundPath = path;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (configContent == null)
+            {
                 var xdgConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
                 if (!string.IsNullOrEmpty(xdgConfigHome))
                 {
@@ -95,10 +121,15 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
 
             if (configContent == null)
             {
-                string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                if (!string.IsNullOrEmpty(userProfile))
+                string? homeDir = Environment.GetEnvironmentVariable("HOME");
+                if (string.IsNullOrEmpty(homeDir))
                 {
-                    var path1 = Path.Combine(userProfile, ".wezterm.lua");
+                    homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                }
+
+                if (!string.IsNullOrEmpty(homeDir))
+                {
+                    var path1 = Path.Combine(homeDir, ".wezterm.lua");
                     if (File.Exists(path1))
                     {
                         configContent = await TryReadFileAsync(path1).ConfigureAwait(false);
@@ -106,7 +137,7 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
                     }
                     else
                     {
-                        var path2 = Path.Combine(userProfile, ".config", "wezterm", "wezterm.lua");
+                        var path2 = Path.Combine(homeDir, ".config", "wezterm", "wezterm.lua");
                         if (File.Exists(path2))
                         {
                             configContent = await TryReadFileAsync(path2).ConfigureAwait(false);
@@ -140,10 +171,35 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
 
                     foreach (var itemBlock in items)
                     {
-                        var labelMatch = LabelRegex().Match(itemBlock);
-                        if (!labelMatch.Success) continue;
+                        var argsList = new List<string>();
+                        var argsMatch = ArgsRegex().Match(itemBlock);
+                        if (argsMatch.Success)
+                        {
+                            var argsContent = argsMatch.Groups[1].Value;
+                            var stringMatches = ArgsStringRegex().Matches(argsContent);
+                            foreach (Match m in stringMatches)
+                            {
+                                argsList.Add(UnescapeLuaString(m.Groups[2].Value));
+                            }
+                        }
 
-                        string label = UnescapeLuaString(labelMatch.Groups[2].Value);
+                        string label;
+                        var labelMatch = LabelRegex().Match(itemBlock);
+                        if (labelMatch.Success)
+                        {
+                            label = UnescapeLuaString(labelMatch.Groups[2].Value);
+                        }
+                        else
+                        {
+                            if (argsList.Count > 0)
+                            {
+                                label = string.Join(' ', argsList);
+                            }
+                            else
+                            {
+                                label = "WezTerm (Unnamed)";
+                            }
+                        }
 
                         var cwdMatch = CwdRegex().Match(itemBlock);
                         string? cwd = cwdMatch.Success ? UnescapeLuaString(cwdMatch.Groups[2].Value) : null;
@@ -160,18 +216,6 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
                             if (domainStringMatch.Success)
                             {
                                 domain = UnescapeLuaString(domainStringMatch.Groups[2].Value);
-                            }
-                        }
-
-                        var argsList = new List<string>();
-                        var argsMatch = ArgsRegex().Match(itemBlock);
-                        if (argsMatch.Success)
-                        {
-                            var argsContent = argsMatch.Groups[1].Value;
-                            var stringMatches = ArgsStringRegex().Matches(argsContent);
-                            foreach (Match m in stringMatches)
-                            {
-                                argsList.Add(UnescapeLuaString(m.Groups[2].Value));
                             }
                         }
 

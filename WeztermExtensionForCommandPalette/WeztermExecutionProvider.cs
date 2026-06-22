@@ -49,19 +49,16 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
                 }
             }
 
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < args.Count; i++)
-            {
-                if (i > 0) sb.Append(' ');
-                sb.Append(EscapeArgument(args[i]));
-            }
-
             var startInfo = new ProcessStartInfo
             {
                 FileName = weztermPath,
-                Arguments = sb.ToString(),
-                UseShellExecute = true
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
+            foreach (var arg in args)
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
 
             var thread = new System.Threading.Thread(() =>
             {
@@ -146,50 +143,6 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
         return _resolvedWeztermPath;
     }
 
-    private static string EscapeArgument(string arg)
-    {
-        if (string.IsNullOrEmpty(arg))
-        {
-            return "\"\"";
-        }
-
-        if (arg.AsSpan().IndexOfAny(' ', '\t', '"') < 0)
-        {
-            return arg;
-        }
-
-        var sb = new System.Text.StringBuilder(arg.Length + 5);
-        sb.Append('"');
-        for (int i = 0; i < arg.Length; i++)
-        {
-            int backslashCount = 0;
-            while (i < arg.Length && arg[i] == '\\')
-            {
-                backslashCount++;
-                i++;
-            }
-
-            if (i < arg.Length)
-            {
-                if (arg[i] == '"')
-                {
-                    sb.Append('\\', backslashCount * 2 + 1);
-                    sb.Append('"');
-                }
-                else
-                {
-                    sb.Append('\\', backslashCount);
-                    sb.Append(arg[i]);
-                }
-            }
-            else
-            {
-                sb.Append('\\', backslashCount * 2);
-            }
-        }
-        sb.Append('"');
-        return sb.ToString();
-    }
 
     [System.Runtime.InteropServices.LibraryImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
