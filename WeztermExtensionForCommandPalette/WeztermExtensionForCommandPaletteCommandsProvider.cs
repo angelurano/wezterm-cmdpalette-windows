@@ -20,7 +20,7 @@ public partial class WeztermExtensionForCommandPaletteCommandsProvider : Command
     public WeztermExtensionForCommandPaletteCommandsProvider(WeztermExtensionForCommandPalettePage page)
     {
         _page = page ?? throw new ArgumentNullException(nameof(page));
-        DisplayName = "Wezterm";
+        DisplayName = Resources.GetString("ProfilesTitle");
         Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png");
     }
 
@@ -33,8 +33,8 @@ public partial class WeztermExtensionForCommandPaletteCommandsProvider : Command
         return [
             new CommandItem(_page)
             {
-                Title = "WezTerm Profiles",
-                Subtitle = "Open the list of all WezTerm profiles",
+                Title = Resources.GetString("ProfilesTitle"),
+                Subtitle = Resources.GetString("ProfilesSubtitle"),
                 Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png")
             }
         ];

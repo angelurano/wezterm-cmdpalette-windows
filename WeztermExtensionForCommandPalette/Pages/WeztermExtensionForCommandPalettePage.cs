@@ -37,8 +37,8 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
         _executionProvider = executionProvider ?? throw new ArgumentNullException(nameof(executionProvider));
 
         Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png");
-        Title = "Wezterm Profiles";
-        Name = "Wezterm";
+        Title = Resources.GetString("ProfilesTitle");
+        Name = Resources.GetString("ProfilesTitle");
 
         // Pre-fetch profiles in background on page initialization.
         _ = RefreshProfilesIfNeededAsync();
@@ -82,7 +82,10 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
                     var command = new AnonymousCommand(() =>
                     {
                         _executionProvider.LaunchProfile(profile);
-                    });
+                    })
+                    {
+                        Name = Resources.GetString("StartProfile")
+                    };
 
                     command.Result = CommandResult.Dismiss();
 
@@ -104,7 +107,7 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
                     }
                     else
                     {
-                        subtitle = "Launch default WezTerm session";
+                        subtitle = Resources.GetString("DefaultSessionSubtitle");
                     }
 
                     items[i] = new ListItem(command)

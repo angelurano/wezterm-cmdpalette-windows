@@ -51,3 +51,4 @@ public class WeztermProfileFactoryTests
         act.Should().Throw<ArgumentNullException>();
     }
 }
+

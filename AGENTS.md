@@ -31,3 +31,6 @@ This file provides context, rules, and guidelines to help AI coding agents work 
 ### 4. Native Windows Interop (P/Invoke)
 - **Modern P/Invoke**: Use the newer `[LibraryImport]` source generator instead of `[DllImport]` for any Win32 API calls.
 - **Window Focus Delegation**: To bypass Windows window-activation restrictions when launching WezTerm from an out-of-process COM server, delegate focus permission using the Win32 `AllowSetForegroundWindow` API on an STA thread.
+
+## Git & Version Control Guidelines
+- **Do not commit changes automatically**: Never execute `git commit` or create git commits unless the user explicitly requests it in their instructions.
