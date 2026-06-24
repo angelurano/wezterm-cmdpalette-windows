@@ -70,4 +70,7 @@
   <data name="DefaultSessionSubtitle" xml:space="preserve">
     <value>Iniciar sesión por defecto de WezTerm</value>
   </data>
+  <data name="StartProfileAsAdmin" xml:space="preserve">
+    <value>Iniciar perfil como administrador</value>
+  </data>
 </root>

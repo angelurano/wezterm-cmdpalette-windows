@@ -79,15 +79,14 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
                 for (int i = 0; i < profiles.Count; i++)
                 {
                     var profile = profiles[i];
-                    var command = new AnonymousCommand(() =>
-                    {
-                        _executionProvider.LaunchProfile(profile);
-                    })
-                    {
-                        Name = Resources.GetString("StartProfile")
-                    };
+                    var command = new Commands.LaunchProfileCommand(_executionProvider, profile, false);
+                    var runAsAdminCmd = new Commands.LaunchProfileCommand(_executionProvider, profile, true);
 
-                    command.Result = CommandResult.Dismiss();
+                    var runAsAdminContextItem = new CommandContextItem(runAsAdminCmd)
+                    {
+                        Title = Resources.GetString("StartProfileAsAdmin"),
+                        RequestedShortcut = KeyChordHelpers.FromModifiers(true, false, false, false, (int)Windows.System.VirtualKey.Enter, 0)
+                    };
 
                     string subtitle;
                     if (!string.IsNullOrEmpty(profile.Domain))
@@ -114,7 +113,8 @@ public sealed partial class WeztermExtensionForCommandPalettePage : ListPage
                     {
                         Title = profile.Label,
                         Subtitle = subtitle,
-                        Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png")
+                        Icon = IconHelpers.FromRelativePath("Assets\\wezterm_logo.png"),
+                        MoreCommands = [runAsAdminContextItem]
                     };
                 }
 

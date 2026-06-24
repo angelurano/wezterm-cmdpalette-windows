@@ -4,6 +4,7 @@
 
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Shmuelie.WinRTServer;
 using Shmuelie.WinRTServer.CsWinRT;
 using System;
@@ -30,6 +31,12 @@ public class Program
 
             using ManualResetEvent extensionDisposedEvent = new(false);
             var services = new ServiceCollection();
+
+            services.AddLogging(builder =>
+            {
+                builder.AddDebug();
+                builder.AddConsole();
+            });
 
             services.AddSingleton<IWeztermProfileFactory, WeztermProfileFactory>();
             services.AddSingleton<IWeztermConfigProvider, WeztermConfigProvider>();

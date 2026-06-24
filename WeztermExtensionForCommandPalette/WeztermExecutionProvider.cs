@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using Microsoft.Extensions.Logging;
 
 namespace WeztermExtensionForCommandPalette;
 
@@ -15,10 +16,21 @@ namespace WeztermExtensionForCommandPalette;
 /// </summary>
 public partial class WeztermExecutionProvider : IWeztermExecutionProvider
 {
+    private readonly ILogger<WeztermExecutionProvider> _logger;
     private string? _resolvedWeztermPath;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WeztermExecutionProvider"/> class.
+    /// </summary>
+    /// <param name="logger">The logger instance.</param>
+    /// <exception cref="ArgumentNullException">Thrown when dependencies are null.</exception>
+    public WeztermExecutionProvider(ILogger<WeztermExecutionProvider> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
     /// <inheritdoc/>
-    public void LaunchProfile(WeztermProfile profile)
+    public void LaunchProfile(WeztermProfile profile, bool asAdmin = false)
     {
         ArgumentNullException.ThrowIfNull(profile);
 
@@ -52,9 +64,14 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
             var startInfo = new ProcessStartInfo
             {
                 FileName = weztermPath,
-                UseShellExecute = false,
+                UseShellExecute = asAdmin,
                 CreateNoWindow = true
             };
+            if (asAdmin)
+            {
+                startInfo.Verb = "runas";
+            }
+
             foreach (var arg in args)
             {
                 startInfo.ArgumentList.Add(arg);
@@ -67,7 +84,7 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
                     _ = AllowSetForegroundWindow(ASFW_ANY);
 
                     var process = Process.Start(startInfo);
-                    if (process != null)
+                    if (process != null && !asAdmin)
                     {
                         _ = AllowSetForegroundWindow(process.Id);
 
@@ -90,10 +107,15 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
                             _ = AllowSetForegroundWindow(ASFW_ANY);
                         }
                     }
+                    else if (process != null && asAdmin)
+                    {
+                        // For elevated processes, just ensure focus permission is delegated generally
+                        _ = AllowSetForegroundWindow(ASFW_ANY);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Error launching Wezterm in STA thread: {ex.Message}");
+                    LogStaThreadLaunchError(ex);
                 }
             });
             thread.SetApartmentState(System.Threading.ApartmentState.STA);
@@ -105,7 +127,7 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error launching Wezterm: {ex.Message}");
+            LogLaunchError(ex);
         }
     }
 
@@ -207,4 +229,10 @@ public partial class WeztermExecutionProvider : IWeztermExecutionProvider
             _ = SetForegroundWindow(hWnd);
         }
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Error, Message = "Error launching WezTerm in STA thread")]
+    private partial void LogStaThreadLaunchError(Exception ex);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "Error launching WezTerm")]
+    private partial void LogLaunchError(Exception ex);
 }

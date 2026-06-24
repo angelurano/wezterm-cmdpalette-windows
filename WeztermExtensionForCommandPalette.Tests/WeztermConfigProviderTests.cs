@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using System;
 using System.IO;
@@ -18,7 +19,8 @@ public class WeztermConfigProviderTests
     public void SetUp()
     {
         _mockFactory = new Mock<IWeztermProfileFactory>(MockBehavior.Strict);
-        _provider = new WeztermConfigProvider(_mockFactory.Object);
+        var mockLogger = new Mock<ILogger<WeztermConfigProvider>>();
+        _provider = new WeztermConfigProvider(_mockFactory.Object, mockLogger.Object);
         // Clear environment variables before each test
         Environment.SetEnvironmentVariable("WEZTERM_CONFIG_FILE", null);
         Environment.SetEnvironmentVariable("WEZTERM_CONFIG_DIR", null);

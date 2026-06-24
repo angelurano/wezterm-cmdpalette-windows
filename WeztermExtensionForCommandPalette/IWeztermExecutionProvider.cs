@@ -10,8 +10,9 @@ namespace WeztermExtensionForCommandPalette;
 public interface IWeztermExecutionProvider
 {
     /// <summary>
-    /// Launches a specific WezTerm profile.
+    /// Launches a specific WezTerm profile, optionally as administrator.
     /// </summary>
     /// <param name="profile">The profile to launch.</param>
-    void LaunchProfile(WeztermProfile profile);
+    /// <param name="asAdmin">True to launch with elevated administrator privileges; otherwise false.</param>
+    void LaunchProfile(WeztermProfile profile, bool asAdmin = false);
 }

@@ -8,6 +8,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace WeztermExtensionForCommandPalette;
 
@@ -15,9 +16,12 @@ namespace WeztermExtensionForCommandPalette;
 /// Default implementation of the <see cref="IWeztermConfigProvider"/> interface.
 /// Provides configuration scanning, comment stripping, parsing, and caching.
 /// </summary>
-public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory) : IWeztermConfigProvider, IDisposable
+public partial class WeztermConfigProvider(
+    IWeztermProfileFactory profileFactory,
+    ILogger<WeztermConfigProvider> logger) : IWeztermConfigProvider, IDisposable
 {
     private readonly IWeztermProfileFactory _profileFactory = profileFactory ?? throw new ArgumentNullException(nameof(profileFactory));
+    private readonly ILogger<WeztermConfigProvider> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly SemaphoreSlim _lock = new(1, 1);
     private string? _resolvedConfigPath;
     private DateTime _lastConfigWriteTime = DateTime.MinValue;
@@ -48,8 +52,9 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
                         _cachedProfiles = null;
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    LogConfigTimeCheckError(ex, _resolvedConfigPath ?? string.Empty);
                 }
             }
 
@@ -227,8 +232,9 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
                     _lastConfigWriteTime = File.GetLastWriteTime(foundPath);
                     _cachedProfiles = profiles;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    LogConfigParseError(ex, foundPath ?? string.Empty);
                 }
             }
 
@@ -247,14 +253,15 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
         }
     }
 
-    private static async Task<string?> TryReadFileAsync(string path)
+    private async Task<string?> TryReadFileAsync(string path)
     {
         try
         {
             return await File.ReadAllTextAsync(path).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
+            LogFileReadError(ex, path);
             return null;
         }
     }
@@ -391,4 +398,13 @@ public partial class WeztermConfigProvider(IWeztermProfileFactory profileFactory
         _lock.Dispose();
         GC.SuppressFinalize(this);
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Error checking configuration file write time: {Path}")]
+    private partial void LogConfigTimeCheckError(Exception ex, string path);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "Error parsing WezTerm configuration from: {Path}")]
+    private partial void LogConfigParseError(Exception ex, string path);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Failed to read configuration file at path: {Path}")]
+    private partial void LogFileReadError(Exception ex, string path);
 }
